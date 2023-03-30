@@ -1,3 +1,4 @@
+`include "./Para.v"
 module npc (
     input [31:0] PC_add_4,
     // input        Branch, 
@@ -5,25 +6,38 @@ module npc (
     // input        PC_Sub_4,
     input        PC_Sub_4_Ctrl,
     input        PC_Sub_4_Data, // Data Bubble
-    input        Beq,
+    input        Flag_Branch,
     input        Jump,   
-    input [31:0] BEQ_immed, // extend Immediate used in BEQ
-    input [25:0] Jump_immed,  // Jump instruction address
-    input [31:0] Branch_PC,
+    input [25:0] Immediate,
+    input        JR,
+    input        ERET,
+    input [31:0] Branch_Mux_Rs,
 
     output reg [31:0] NPC
 );
     reg        [31: 0]  PC;
+    reg        [31: 0]  EPC;
 
+    initial
+    begin
+        EPC = `EPC_ADDR;
+    end
     always @(*) begin
-        if(Jump)
+        PC  = PC_add_4 - 4;
+        if(ERET)begin
+            NPC = EPC;
+        end
+        else if(JR)begin
+            NPC = Branch_Mux_Rs;
+        end  
+        else if(Jump)
             begin
-                PC  = PC_add_4 - 4;
-                NPC = {PC[31:28], Jump_immed, 2'b00} + 4;
+                NPC = {PC[31:28], Immediate, 2'b00} + 4;
+                //NPC = {PC[31:28], {Immediate << 2}};
             end
-        else if(Beq && !PC_Sub_4_Ctrl)
+        else if(Flag_Branch && !PC_Sub_4_Ctrl)
             begin
-                NPC = Branch_PC + 4;
+                NPC = ({{16{Immediate[15]}},Immediate[15:0]} << 2) + PC;
             end
         else
             begin

@@ -17,24 +17,28 @@
 `include "./Forward.v"
 `include "./Hazard.v"
 `include "./Branch.v"
-`include "./Branch_PC.v"
 
-module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp, 
-    MemWrite, ALUSrc, RegWrite, ExtOp, Clock, Reset, IF_ID_instr_out, Ctrl_0_Ctrl, Ctrl_0_Data);
+module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp, DataDst, JR, ERET,
+    MemWrite, ALUSrc, RegWrite, ExtOp, Clock, Reset, IF_ID_instr_out, Ctrl_0_Ctrl, Ctrl_0_Data,EXCCODE);//#
     
-    input                  RegDst;
+    input [1:0]            RegDst;
     input                  Jump;
-    input                  Branch;
-    input                  MemRead;
+    input [3:0]            Branch;
+    input [2:0]            MemRead;
     input                  MemtoReg;
     input [`SIZE_ALUOP: 0] ALUOp;
-    input                  MemWrite;
+    input [1:0]            MemWrite;
     input                  ALUSrc;
     input                  RegWrite;
     input                  ExtOp;
+    input                  DataDst;
+    input                  JR;
+    input                  ERET;
 
     input                  Clock;
     input                  Reset;
+    //#
+    input[`SIZE_EXCCODE:0] EXCCODE;
 
     output [31: 0]         IF_ID_instr_out;
     output                 Ctrl_0_Ctrl;
@@ -42,16 +46,17 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
 
     // pipeline wire
     //IF_ID
+    wire           IF_IF_IS_NOP;
     wire    [31:0] IF_ID_PC_out;
     wire    [31:0] IF_ID_instr_out;
     //ID_EX
     wire           ID_EX_MemtoReg_out;
     wire           ID_EX_RegWrite_out;
-    wire           ID_EX_Branch_out;
+    wire    [3:0]  ID_EX_Branch_out;
     wire           ID_EX_Jump_out;
-    wire           ID_EX_MemWrite_out;
-    wire           ID_EX_MemRead_out;
-    wire           ID_EX_RegDst_out;
+    wire    [1:0]  ID_EX_MemWrite_out;
+    wire    [2:0]  ID_EX_MemRead_out;
+    wire    [1:0]  ID_EX_RegDst_out;
     wire           ID_EX_ALUSrc_out;
     wire           ID_EX_ExtOp_out;
     wire    [`SIZE_ALUOP:0] ID_EX_ALUOp_out;
@@ -63,15 +68,16 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
     wire    [4:0]  ID_EX_rt_out;
     wire    [4:0]  ID_EX_rd_out;
     wire    [4:0]  ID_EX_rs_out;
-    // FIXME
     wire    [4:0]  ID_EX_shamt;
+    wire           ID_EX_DataDst;
+    wire           ID_EX_IS_NOP;
     //EX_MEM
     wire           EX_MEM_MemtoReg_out;
     wire           EX_MEM_RegWrite_out;
-    wire           EX_MEM_Branch_out;
+    wire    [3:0]  EX_MEM_Branch_out;
     wire           EX_MEM_Jump_out;
-    wire           EX_MEM_MemWrite_out;
-    wire           EX_MEM_MemRead_out;
+    wire    [1:0]  EX_MEM_MemWrite_out;
+    wire    [2:0]  EX_MEM_MemRead_out;
     wire    [31:0] EX_MEM_PC_out;
     wire    [25:0] EX_MEM_Jump_immed_out;
     wire           EX_MEM_Zero_out;
@@ -80,14 +86,16 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
     wire    [31:0] EX_MEM_ExtOut_out;
     wire    [4:0]  EX_MEM_Reg_Write_out;
     wire    [4:0]  EX_MEM_RegRt_out;
+    wire           EX_MEM_IS_NOP;
     //MEM_WB
     wire           MEM_WB_MemtoReg_out;
     wire           MEM_WB_RegWrite_out;
-    wire           MEM_WB_MemRead_out;
+    wire    [2:0]  MEM_WB_MemRead_out;
     wire    [31:0] MEM_WB_Mem_Data_out;
     wire    [31:0] MEM_WB_ALU_Data_out;
     wire    [4:0]  MEM_WB_Reg_Write_out;
     wire    [4:0]  MEM_WB_RegRt_out;
+    wire           MEM_WB_IS_NOP;
 
     // module wire
     wire    [31: 0] PC;             // value of pc
@@ -108,6 +116,7 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
     wire    [31: 0] AluOut;         // out of alu
     wire    [31: 0] DmOut;          // out of dm
     wire    [31: 0] BeqPCOut;       // out of beq pc add 
+    wire    [31: 0] Data_to_reg;
 
     // Forward
     // Data Hazard
@@ -124,27 +133,58 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
     wire    [31:0] ForwardA_Rs_Mux; 
     wire    [31:0] ForwardB_Rt_Mux; 
 
-    wire           Flag_Beq_out;
-    wire           Flag_Jump_out;
-    wire    [31:0] BEQ_imme_out;
-    wire    [25:0] Jump_imme_out;
+    wire           Flag_Branch;
 
-    wire    [31:0] BEQ_Mux_Rs;
-    wire    [31:0] BEQ_Mux_Rt;
+    wire    [31:0] Branch_Mux_Rs;
+    wire    [31:0] Branch_Mux_Rt;
 
-    wire    [31:0] BEQ_PC;
+    //overflow**
+    wire overflow;
+    wire EX_MEM_overflow;
+    wire MEM_WB_overflow;
+    wire [31:0]IF_ID_OPC;//overflow需要输出的pc
+    wire [31:0]ID_EX_OPC;
+    wire [31:0]EX_MEM_OPC;
+    wire [31:0]MEM_WB_OPC;
+    //#
+    //EXCCODE
+    wire [`SIZE_EXCCODE:0] IF_ID_EXCCODE;
+    wire [`SIZE_EXCCODE:0] ID_EX_EXCCODE;
+    wire [`SIZE_EXCCODE:0] EX_MEM_EXCCODE;
+    wire [`SIZE_EXCCODE:0] MEM_WB_EXCCODE;
+    wire [31:0] ID_EX_ins;
+    wire [31:0] EX_MEM_ins;
+    wire [31:0] MEM_WB_ins;
+
+
     // DATAPATH
+
+    npc next_program_counter(
+        .PC_add_4(PC_add_4),  // 这里原来写了EX_MEM_PC_out, 不对，导致没有正在流水线起来，可能因为会去等EX_MEM阶段的PC传来
+        // .Branch(EX_MEM_Branch_out),
+        // .Zero(EX_MEM_Zero_out),
+        .PC_Sub_4_Ctrl(PC_Sub_4_Ctrl),
+        .PC_Sub_4_Data(PC_Sub_4_Data),
+        .Flag_Branch(Flag_Branch),
+        .Jump(Jump),
+        .Immediate(IF_ID_instr_out[25:0]),
+        .JR(JR),
+        .ERET(ERET),
+        .Branch_Mux_Rs(Branch_Mux_Rs),
+
+        .NPC(NPC)
+    );
     pc program_counter(
         .NPC(NPC),
         .Clock(Clock),
         .Reset(Reset),
-        .PC_Sub_4_Ctrl(PC_Sub_4_Ctrl),
+        // .PC_Sub_4_Ctrl(PC_Sub_4_Ctrl),
         .PC_Sub_4_Data(PC_Sub_4_Data),
-        .Beq(Flag_Beq_out),
-        .Jump(Flag_Jump_out),
-        .BEQ_immed(BEQ_imme_out),
-        .Jump_immed(Jump_imme_out),
-        .Branch_PC(BEQ_PC),
+        // .Flag_Branch(Flag_Branch),
+        .Jump(Jump),
+        .Immediate(IF_ID_instr_out[25:0]),
+        // .JR(JR),
+        // .RegfileOut1(Branch_Mux_Rs),
 
         .PC(PC)
     );
@@ -152,20 +192,6 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .PC(PC),
 
         .PC_add_4(PC_add_4)
-    );
-    npc next_program_counter(
-        .PC_add_4(PC_add_4),  // 这里原来写了EX_MEM_PC_out, 不对，导致没有正在流水线起来，可能因为会去等EX_MEM阶段的PC传来
-        // .Branch(EX_MEM_Branch_out),
-        // .Zero(EX_MEM_Zero_out),
-        .PC_Sub_4_Ctrl(PC_Sub_4_Ctrl),
-        .PC_Sub_4_Data(PC_Sub_4_Data),
-        .Beq(Flag_Beq_out),
-        .Jump(Flag_Jump_out),
-        .BEQ_immed(BEQ_imme_out),
-        .Jump_immed(Jump_imme_out),
-        .Branch_PC(BEQ_PC),
-
-        .NPC(NPC)
     );
     im instruction_memory(
         .PC(PC),
@@ -177,13 +203,21 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .clk(Clock),
         .PC_in(PC_add_4),
         .instr_in(Instruction),        
-        .PC_old(IF_ID_PC_out),
-        .instr_old(IF_ID_instr_out),
+        // .PC_old(IF_ID_PC_out),
+        // .instr_old(IF_ID_instr_out),
         .Flush_Data(IF_ID_Flush_Data),
         .Flush_Ctrl(IF_ID_Flush_Ctrl),
+        .JR(JR),
+        .ERET(ERET),
+        .Flag_Branch(Flag_Branch),
+        .OPC_in(PC),//**
+        .EXCCODE_in(EXCCODE),//#
 
         .PC_out(IF_ID_PC_out),
-        .instr_out(IF_ID_instr_out)
+        .instr_out(IF_ID_instr_out),
+        .IF_ID_IS_NOP(IF_ID_IS_NOP),
+        .OPC_out(IF_ID_OPC),//**
+        .EXCCODE_out(IF_ID_EXCCODE)//#
     );
 
     // initial begin
@@ -192,6 +226,8 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
 
 
     register_file register_files(
+        .Opcode(IF_ID_instr_out[31:26]),
+
         .rs(IF_ID_instr_out[25:21]),
         .rt(IF_ID_instr_out[20:16]),
         .rd(MEM_WB_Reg_Write_out),
@@ -199,6 +235,11 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .RegWrite(MEM_WB_RegWrite_out),
         .Clock(Clock),
         .Reset(Reset),
+        .MEM_WB_IS_NOP(MEM_WB_IS_NOP),
+        .overflow(MEM_WB_overflow),//**
+        .OPC(MEM_WB_OPC),//**
+        .EXCCODE(MEM_WB_EXCCODE),//#
+        .ins(MEM_WB_ins),//##
 
         .rsData(RegfileOut1),
         .rtData(RegfileOut2)
@@ -210,20 +251,17 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .Rs(RegfileOut1),
         .Rt(RegfileOut2),
         
-        .BEQ_Rs(BEQ_Mux_Rs),
-        .BEQ_Rt(BEQ_Mux_Rt)
+        .Branch_Rs(Branch_Mux_Rs),
+        .Branch_Rt(Branch_Mux_Rt)
     );
     Branch branch(
         .clk(Clock),
-        .Opcode(IF_ID_instr_out[31:26]),
+        .Branch(Branch),
         .Immediate(IF_ID_instr_out[25:0]),
-        .Rs(BEQ_Mux_Rs),
-        .Rt(BEQ_Mux_Rt),
+        .Rs(Branch_Mux_Rs),
+        .Rt(Branch_Mux_Rt),
 
-        .Flag_Beq(Flag_Beq_out),
-        .BEQ_imme_out(BEQ_imme_out),
-        .Flag_Jump(Flag_Jump_out),
-        .Jump_imme_out(Jump_imme_out)
+        .Flag_Branch(Flag_Branch)
     );
 
     ID_EX ID_EX_pipeline(
@@ -246,8 +284,12 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .rt_in(IF_ID_instr_out[20:16]),
         .rd_in(IF_ID_instr_out[15:11]),
         .rs_in(IF_ID_instr_out[25:21]),
-        // FIXME
         .shamt_in(IF_ID_instr_out[10:6]),
+        .DataDst_in(DataDst),
+        .IF_ID_IS_NOP(IF_ID_IS_NOP),
+        .OPC_in(IF_ID_OPC),//**
+        .EXCCODE_in(EXCCODE),//#
+        .ins_in(IF_ID_instr_out),//##
 
         .MemtoReg_out(ID_EX_MemtoReg_out),
         .RegWrite_out(ID_EX_RegWrite_out),
@@ -267,11 +309,15 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .rt_out(ID_EX_rt_out),
         .rd_out(ID_EX_rd_out),
         .rs_out(ID_EX_rs_out),
-        // c
-        .shamt_out(ID_EX_shamt)
+        .shamt_out(ID_EX_shamt),
+        .DataDst_out(ID_EX_DataDst),
+        .ID_EX_IS_NOP(ID_EX_IS_NOP),
+        .OPC_out(ID_EX_OPC),//**
+        .EXCCODE_out(ID_EX_EXCCODE),//#
+        .ins_out(ID_EX_ins)//##
     );
 
-    mux_by_RegDst IF_ID_MUX(
+    mux_by_RegDst RegDst_MUX(
         .rt(ID_EX_rt_out),
         .rd(ID_EX_rd_out),
         .RegDst(ID_EX_RegDst_out),
@@ -317,11 +363,21 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .InputData1(ForwardA_Rs_Mux),
         .InputData2(MuxRFALUOut),
         .AluCtrlOut(AluCtrlOut),
-        // FIXME: add
         .shamt(ID_EX_shamt),
+        .Clock(Clock),
+        .Reset(Reset),//**
 
         .Zero(Zero),
-        .AluRes(AluOut)
+        .AluRes(AluOut),
+        .overflow(overflow)//**
+    );
+
+    mux_by_DataDst Data_MUX(
+        .ALURes(AluOut),
+        .ID_EX_PC_out(ID_EX_PC_out),
+        .DataDst(ID_EX_DataDst),
+
+        .Data_out(Data_to_reg)
     );
 
     EX_MEM EX_MEM_pipeline(
@@ -335,11 +391,16 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .PC_in(ID_EX_PC_out),
         .Jump_immed_in(ID_EX_Jump_immed_out),
         .Zero_in(Zero),
-        .ALURes_in(AluOut),
+        .ALURes_in(Data_to_reg),
         .Data_Write_in(ForwardB_Rt_Mux),
         .ExtOut_in(ExtOut),
         .Reg_Write_in(MuxImRFOut),
         .RegRt_in(ID_EX_rt_out),
+        .ID_EX_IS_NOP(ID_EX_IS_NOP),
+        .overflow_in(overflow),//**
+        .OPC_in(ID_EX_OPC),//**
+        .EXCCODE_in(ID_EX_EXCCODE),//#
+        .ins_in(ID_EX_ins),//##
 
         .MemtoReg_out(EX_MEM_MemtoReg_out),
         .RegWrite_out(EX_MEM_RegWrite_out),
@@ -354,7 +415,12 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .Data_Write_out(EX_MEM_Data_Write_out),
         .ExtOut_out(EX_MEM_ExtOut_out),
         .Reg_Write_out(EX_MEM_Reg_Write_out),
-        .RegRt_out(EX_MEM_RegRt_out)
+        .RegRt_out(EX_MEM_RegRt_out),
+        .EX_MEM_IS_NOP(EX_MEM_IS_NOP),
+        .overflow_out(EX_MEM_overflow),//**
+        .OPC_out(EX_MEM_OPC),//**
+        .EXCCODE_out(EX_MEM_EXCCODE),//#
+        .ins_out(EX_MEM_ins)//##
     );
 
     dm data_memory(
@@ -377,6 +443,12 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         //hazard
         .MemRead_in(EX_MEM_MemRead_out),
         .RegRt_in(EX_MEM_RegRt_out),
+        .EX_MEM_IS_NOP(EX_MEM_IS_NOP),
+        //overflow**
+        .overflow_in(EX_MEM_overflow),
+        .OPC_in(EX_MEM_OPC),
+        .EXCCODE_in(EX_MEM_EXCCODE),//#
+        .ins_in(EX_MEM_ins),//##
 
         .MemtoReg_out(MEM_WB_MemtoReg_out),
         .RegWrite_out(MEM_WB_RegWrite_out),
@@ -384,13 +456,19 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .Mem_Data_out(MEM_WB_Mem_Data_out),
         .ALU_Data_out(MEM_WB_ALU_Data_out),
         .Reg_Write_out(MEM_WB_Reg_Write_out),
-        .RegRt_out(MEM_WB_RegRt_out)
+        .RegRt_out(MEM_WB_RegRt_out),
+        .MEM_WB_IS_NOP(MEM_WB_IS_NOP),
+        .overflow_out(MEM_WB_overflow),//**
+        .OPC_out(MEM_WB_OPC),//**
+        .EXCCODE_out(MEM_WB_EXCCODE),//#
+        .ins_out(MEM_WB_ins)//##
     );
 
     mux_by_MemToReg DM_OUT_MUX(
         .DmData(MEM_WB_Mem_Data_out),
         .ALUData(MEM_WB_ALU_Data_out),
         .MemtoReg(MEM_WB_MemtoReg_out),
+        .overflow(MEM_WB_overflow),//**
 
         .DstData(MuxDmOut)
     );
@@ -434,12 +512,13 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
 
     // Control Forward
     Forward_ControlHazard ForwardControlHazard(
-        .Opcode(IF_ID_instr_out[31:26]),
+        .Branch(Branch),
         .IF_ID_RegRs(IF_ID_instr_out[25:21]),
         .IF_ID_RegRt(IF_ID_instr_out[20:16]),
         .EX_MEM_RegRd(EX_MEM_Reg_Write_out),
         .EX_MEM_MR(EX_MEM_MemRead_out),
         .ALURes(EX_MEM_ALURes_out),
+        .JR(JR),
 
         .ForwardC(ForwardC_Data)
     );
@@ -452,7 +531,7 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .EX_MEM_MR(EX_MEM_MemRead_out),
         .IF_ID_RegRs(IF_ID_instr_out[25:21]),
         .IF_ID_RegRt(IF_ID_instr_out[20:16]),
-        .ID_EX_RegRd(ID_EX_rd_out),
+        .ID_EX_RegRd(MuxImRFOut),
         .ID_EX_RegRt(ID_EX_rt_out),
         .EX_MEM_RegRd(EX_MEM_RegRt_out),
 
@@ -461,12 +540,6 @@ module data_path (RegDst, Jump, Branch, MemRead, MemtoReg, ALUOp,
         .Ctrl_0(Ctrl_0_Ctrl)
     );
 
-    Branch_PC BranchPC(
-        .Opcode(IF_ID_instr_out[31:26]),
-        .BEQ_immed(BEQ_imme_out),
-        .PC(PC),
 
-        .BEQ_PC(BEQ_PC)
-    );
 
 endmodule //data_path

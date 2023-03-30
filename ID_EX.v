@@ -6,12 +6,12 @@ module ID_EX (
     input MemtoReg_in,
     input RegWrite_in,
     // M
-    input Branch_in,
+    input [3:0] Branch_in,
     input Jump_in,
-    input MemWrite_in,
-    input MemRead_in,
+    input [1:0] MemWrite_in,
+    input [2:0] MemRead_in,
     //EX
-    input RegDst_in,
+    input [1:0] RegDst_in,
     input ALUSrc_in,
     input ExtOp_in,
     input [`SIZE_ALUOP:0] ALUOp_in,
@@ -24,20 +24,24 @@ module ID_EX (
     input [4:0]  rt_in,
     input [4:0]  rd_in,
     input [4:0]  rs_in,
-    // FIXME
     input [4:0]  shamt_in,
+    input        DataDst_in,
+    input        IF_ID_IS_NOP,
+    input [31:0] OPC_in,//**
+    input [4:0]EXCCODE_in,//#
+    input[31:0]ins_in,//##
 
     //OUTPUT
     // WB
     output reg MemtoReg_out,
     output reg RegWrite_out,
     // M
-    output reg  Branch_out,
+    output reg  [3:0] Branch_out,
     output reg  Jump_out,
-    output reg  MemWrite_out,
-    output reg  MemRead_out,
+    output reg  [1:0] MemWrite_out,
+    output reg  [2:0] MemRead_out,
     //EX
-    output reg  RegDst_out,
+    output reg  [1:0] RegDst_out,
     output reg  ALUSrc_out,
     output reg  ExtOp_out,
     output reg  [`SIZE_ALUOP:0] ALUOp_out,
@@ -50,8 +54,12 @@ module ID_EX (
     output reg  [4:0]  rt_out,
     output reg  [4:0]  rd_out,
     output reg  [4:0]  rs_out,
-    // FIXME
-    output reg  [4:0]  shamt_out
+    output reg  [4:0]  shamt_out,
+    output reg         DataDst_out,
+    output reg         ID_EX_IS_NOP,
+    output reg [31:0] OPC_out,//**
+    output reg [4:0]EXCCODE_out,//#
+    output reg [31:0] ins_out//##
 );
     always @(posedge clk) begin
         MemtoReg_out   <= MemtoReg_in;
@@ -72,8 +80,12 @@ module ID_EX (
         rt_out         <= rt_in;
         rd_out         <= rd_in;
         rs_out         <= rs_in;
-        // FIXME
         shamt_out      <= shamt_in;
+        DataDst_out    <= DataDst_in;
+        ID_EX_IS_NOP   <= IF_ID_IS_NOP;
+        OPC_out         <= OPC_in;//**
+        EXCCODE_out <=EXCCODE_in;//#
+        ins_out <=ins_in;//##
     end
     initial begin
         // $monitor("ID_EX : RegWrite_in:%b, time %t",RegWrite_in,$time);

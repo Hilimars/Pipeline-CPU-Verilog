@@ -17,7 +17,7 @@ module Testbench();
             clk <= 0 ;
             rst <= 1 ;
             #10 rst <= 0; 
-            #4000 $finish;
+            #20000 $finish;
         end
             
     integer cnt = 0;

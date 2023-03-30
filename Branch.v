@@ -1,41 +1,29 @@
 `include "./Para.v"
 module Branch (
   input clk,
-  input [5:0] Opcode,
+  input [3:0] Branch,
   input [25:0] Immediate,
   input [31:0] Rs,
   input [31:0] Rt,
+  output reg Flag_Branch
 
-  output reg Flag_Beq,
-  output reg [31:0] BEQ_imme_out,
-  output reg Flag_Jump,
-  output reg [25:0] Jump_imme_out
 );
-initial
-begin
-    Flag_Jump    = 0;
-    Flag_Beq     = 0;
-end
-// always @(negedge clk) begin
-always @(*) begin
-  case(Opcode)
-    `OP_J: 
-    begin
-      Flag_Jump     <= 1;
-      Jump_imme_out <= Immediate;
-    end
-    `OP_BEQ:
-    begin
-      Flag_Beq     <= (Rs === Rt);
-      BEQ_imme_out <= {{16{Immediate[15]}},Immediate[15:0]}; 
-    end
-    default:
-    begin
-      Jump_imme_out <= Immediate;
-      BEQ_imme_out <= {{16{Immediate[15]}},Immediate[15:0]}; 
-      Flag_Jump    <= 0;
-      Flag_Beq     <= 0;
-    end 
-  endcase
-end
+  initial
+  begin
+    Flag_Branch     = 0;
+  end
+  // always @(negedge clk) begin
+  always @(*) begin
+    case(Branch)
+      `BEQ     :  Flag_Branch    <= (Rs == Rt) ? 1 : 0 ;
+      `BNE     :  Flag_Branch    <= (Rs == Rt) ? 0 : 1 ;
+      `BGTZ    :  Flag_Branch    <= ($signed(Rs) > 0) ? 1 : 0;
+      `BLEZ    :  Flag_Branch    <= ($signed(Rs) < 0 || Rs == 0) ? 1 : 0;
+      `BGEZ    :  Flag_Branch    <= ($signed(Rs) > 0 || Rs == 0) ? 1 : 0;
+      `BLTZ    :  Flag_Branch    <= ($signed(Rs) < 0) ? 1 : 0;
+      `BGEZAL  :  Flag_Branch    <= ($signed(Rs) > 0 || Rs == 0) ? 1 : 0;
+      `BLTZAL  :  Flag_Branch    <= ($signed(Rs) < 0) ? 1 : 0;
+      `NOT_Branch:Flag_Branch    <= 0;
+    endcase
+  end
 endmodule //Branch

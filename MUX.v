@@ -2,15 +2,16 @@
 module mux_by_RegDst(
     input [4:0] rt,
     input [4:0] rd,
-    input       RegDst,
+    input [1:0] RegDst,
 
     output reg [4:0] DstReg
 );
     always @(*) begin
-        if(RegDst)
-            DstReg <= rd;
-        else
-            DstReg <= rt;
+        case (RegDst)
+            2'b00: DstReg = rt;
+            2'b01: DstReg = rd;
+            2'b10: DstReg = 31;
+        endcase
     end
 
 
@@ -33,16 +34,36 @@ module mux_by_ALUSrc(
 
 endmodule
 
+// Mux by DataDst
+// 置于EX_MEM之前，判断存入的是ALU结果还是PC+4，为跳转指令设计
+module mux_by_DataDst(
+    input [31:0] ALURes,
+    input [31:0] ID_EX_PC_out,
+    input        DataDst,
+
+    output reg [31:0] Data_out
+);
+    always @(*) begin
+        if(DataDst)
+            Data_out <= ID_EX_PC_out;
+        else    
+            Data_out <= ALURes;
+    end
+
+endmodule
+
 // Mux by MemToReg
+//**
 module mux_by_MemToReg(
     input [31:0] DmData,
     input [31:0] ALUData,
     input        MemtoReg,
+    input overflow,//**
 
     output reg [31:0] DstData
 );
     always @(*) begin
-        if(MemtoReg)
+        if(MemtoReg)//||overflow)
             DstData <= DmData;
         else
             DstData <= ALUData;
@@ -96,8 +117,8 @@ module mux_by_ForwardC(
     input [31:0] Rs,
     input [31:0] Rt,
 
-    output reg [31:0] BEQ_Rs,
-    output reg [31:0] BEQ_Rt
+    output reg [31:0] Branch_Rs,
+    output reg [31:0] Branch_Rt
 );
     // always @(negedge clk) begin
     always @(*) begin
@@ -105,18 +126,18 @@ module mux_by_ForwardC(
     case(ForwardC)
     2'b01:
         begin
-            BEQ_Rs <= EX_MEM_ALURes;
-            BEQ_Rt <= Rt;
+            Branch_Rs <= EX_MEM_ALURes;
+            Branch_Rt <= Rt;
         end
     2'b10:
         begin
-            BEQ_Rt <= EX_MEM_ALURes;
-            BEQ_Rs <= Rs;
+            Branch_Rt <= EX_MEM_ALURes;
+            Branch_Rs <= Rs;
         end
     default:
         begin
-            BEQ_Rs <= Rs;
-            BEQ_Rt <= Rt;
+            Branch_Rs <= Rs;
+            Branch_Rt <= Rt;
         end
     endcase
     end

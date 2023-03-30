@@ -6,6 +6,6 @@ module PC_add (
 );
 
     always @(PC) begin
-        PC_add_4 <= PC + 4;
+        PC_add_4 = PC + 4;
     end
 endmodule //PC_add

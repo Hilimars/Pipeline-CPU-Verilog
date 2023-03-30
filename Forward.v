@@ -3,7 +3,7 @@
 module Forward_DataHazard (
     input EX_MEM_RW,
     input MEM_WB_RW,
-    input MEM_WB_MR,
+    input [2:0] MEM_WB_MR,
     // input [4:0] MEM_WB_RegRt,
     input [4:0] EX_MEM_RegRd,
     input [4:0] MEM_WB_RegRd,
@@ -42,22 +42,24 @@ endmodule //Forward_DataHazard
 
 
 module Forward_ControlHazard (
-    input [5:0] Opcode,
+    input [3:0] Branch,
     input [4:0] IF_ID_RegRs,
     input [4:0] IF_ID_RegRt,
     input [4:0] EX_MEM_RegRd,
-    input       EX_MEM_MR,
+    input [2:0] EX_MEM_MR,
     input [31:0]ALURes,
+    input JR,
 
     output reg [1:0] ForwardC  // 01:Rs旁路  10:Rt旁路
 );
     always @(*) begin
-      // add beq
-      if(Opcode === `OP_BEQ && (EX_MEM_RegRd != 5'b0) && !EX_MEM_MR && ALURes)
+      // add branch
+      if((Branch != `NOT_Branch || JR) && (EX_MEM_RegRd != 5'b0) && !EX_MEM_MR && ALURes)
       begin
         if(EX_MEM_RegRd == IF_ID_RegRs)   ForwardC = 2'b01;
         else if(EX_MEM_RegRd == IF_ID_RegRt)   ForwardC = 2'b10;
         else ForwardC = 2'b00;
       end
+      else ForwardC = 2'b00;
     end
 endmodule //Forward_ControlHazard

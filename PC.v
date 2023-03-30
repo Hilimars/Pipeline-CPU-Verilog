@@ -5,35 +5,50 @@ module pc(
     input [31:0] NPC,
     input        Clock,
     input        Reset,
-    input        PC_Sub_4_Ctrl,
+    // input        PC_Sub_4_Ctrl,
     input        PC_Sub_4_Data,
-    input        Beq,
+    // input        Flag_Branch,
     input        Jump,   
-    input [31:0] BEQ_immed, // extend Immediate used in BEQ
-    input [25:0] Jump_immed,  // Jump instruction address
-    input [31:0] Branch_PC,
+    input [25:0] Immediate,
+    // input        JR,
+    // input [31:0] RegfileOut1,
 
     output reg [31:0] PC
 );
     reg        [31: 0]  Pre_PC;
 
-    always @(posedge Clock or posedge Reset) begin
-        if(Reset)
-            PC <= `INIT_ADDR;
+    always @(posedge Reset) begin
+        PC <= `INIT_ADDR;
+    end
+
+    always @(posedge Clock) begin
+        //if(Reset)
+        //    PC <= `INIT_ADDR;
         // else if(Beq && !(PC_Sub_4_Ctrl || PC_Sub_4_Data))
         //     PC <= (BEQ_immed<<2) + NPC;
         // else if(!(PC_Sub_4_Ctrl || PC_Sub_4_Data))
-        else if(!PC_Sub_4_Data)                                     
+        //$display("111go! pc = %h, at time: %t, NPC: %h, reset: %b", PC, $time, NPC, Reset);
+        if(!PC_Sub_4_Data)begin
             PC <= NPC;
+        end
+        
     end
-    always @(Beq) begin
-        if(Beq && !PC_Sub_4_Ctrl)        
-        PC <= Branch_PC;
+/*
+    always @(Flag_Branch) begin
+        if(Flag_Branch && !PC_Sub_4_Ctrl)        
+            PC <= {{16{Immediate[15]}},Immediate[15:0], 2'b00};
     end
+*/
     always @(Jump) begin
-        if(Jump)        
-        PC <= {PC[31:28], Jump_immed, 2'b00};
+        if(Jump)
+        PC <= {PC[31:28], Immediate, 2'b00};
     end
+
+    // JR or JALR: PC <- GPR[rs]
+    //always @(JR) begin
+    //    if(JR)
+    //        PC = RegfileOut1;
+    //end
     // initial begin
     //     // $monitor("PC:%b, at time %t",PC, $time);
     // end
